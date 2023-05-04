@@ -1,10 +1,10 @@
 const axios = require('axios');
 const twilio = require('twilio');
 require('dotenv').config();
-const client = twilio('AC8dce978bd2076636dac8da6c24a4115d', '68926c189e98064d5c0fa7032285506f');
+const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN );
 
-const P2P_AD_URL = process.env.P2P_AD_URL;
-const LIVE_PRICE_URL = process.env.LIVE_PRICE_URL;
+const P2P_AD_URL = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
+const LIVE_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?';
 
 const api = axios.create();
 
@@ -49,8 +49,8 @@ function sendAlert(alertMessage) {
 
   client.messages.create({
     body: alertMessage,
-    from: 'whatsapp:+14155238886',
-    to: 'whatsapp:+919505753170'
+    from: 'whatsapp:'+process.env.TWILIO_PHONE_NUMBER,
+    to: 'whatsapp:'+process.env.YOUR_PHONE_NUMBER
   }).then(() => {
     console.log('Client message sent.');
   });
@@ -110,6 +110,6 @@ async function compareAndNotifyBuyandSell(p2pBuyAd, p2pSellAd) {
     }
     
   }
-  
+  sendAlert("Let's Begin !!");
   setInterval(run, 5000);
   
