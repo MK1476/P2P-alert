@@ -2,8 +2,8 @@ const axios = require('axios');
 
 const P2P_AD_URL = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
 const LIVE_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=inr';
-const accountSid = 'AC8dce978bd2076636dac8da6c24a4115d';
-const authToken = 'b5f5e6e11a1c9ec303858307c860dbe9';
+const accountSid = 'sid';
+const authToken = 'Auth';
 const client = require('twilio')(accountSid, authToken);
 
 const api = axios.create();
