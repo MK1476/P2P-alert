@@ -1,19 +1,17 @@
 const axios = require('axios');
+const twilio = require('twilio');
+require('dotenv').config();
+const client = twilio('AC8dce978bd2076636dac8da6c24a4115d', '68926c189e98064d5c0fa7032285506f');
 
-const P2P_AD_URL = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
-const LIVE_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=inr';
-const accountSid = 'sid';
-const authToken = 'Auth';
-const client = require('twilio')(accountSid, authToken);
+const P2P_AD_URL = process.env.P2P_AD_URL;
+const LIVE_PRICE_URL = process.env.LIVE_PRICE_URL;
 
 const api = axios.create();
 
 const fiat = 'INR';
-const asset = 'ETH';
-const tradeType = 'buy';
+const assets = ['ETH', 'BTC', 'USDT'];
 
-// Fetch P2P ad price
-function fetchP2PAdPrice(tradeType) {
+async function fetchP2PAdPrice(asset, tradeType) {
   const data = {
     fiat,
     page: 1,
@@ -25,70 +23,93 @@ function fetchP2PAdPrice(tradeType) {
     publisherType: null,
     payTypes: []
   };
-//   console.log("Name : "+ response.data.data[0].advertiser.nickName);
-//     console.log("Price : "+ response.data.data[0].adv.price +" " +response.data.data[0].adv.fiatUnit);
-//     console.log("Symbol : "+ response.data.data[0].adv.asset);
-  return api.post(P2P_AD_URL, data)
-    .then(response => response.data.data[0].adv.price);
+  const { data: { data: [p2pAd] } } = await api.post(P2P_AD_URL, data);
+//   await api.post(P2P_AD_URL, data).then(res => console.log(res.data.data[0]))
+  return p2pAd?.adv?.dynamicMaxSingleTransAmount < 20000 ? p2pAd : null;
+}
+
+async function fetchLivePrice(coin) {
+  const { data } = await api.get(`${LIVE_PRICE_URL}ids=${coin}&vs_currencies=inr`);
+  return data[coin]?.inr;
+}
+
+let lastAlertMessage = '';
+let lastmsg = 0;
+function sendAlert(alertMessage) {
+  if (alertMessage === lastAlertMessage) {
+    console.log('Same alert message as last time. Skipping client message.');
+    return;
+  }
+  if (Date.now()-lastmsg < 30000) {
+    console.log('A msg has been sent recently. Skipping client message.' + Date.now());
+    return;
+  }
+
+  console.log('Alert: ' + alertMessage);
+
+  client.messages.create({
+    body: alertMessage,
+    from: 'whatsapp:+14155238886',
+    to: 'whatsapp:+919505753170'
+  }).then(() => {
+    console.log('Client message sent.');
+  });
+
+  lastAlertMessage = alertMessage;
+  lastmsg = Date.now();
+}
+
+async function compareAndNotify(p2pAd, livePrice) {
+  if (!p2pAd) return;
+
+  const p2pAdPrice = p2pAd.adv.price;
+  if (livePrice && p2pAdPrice < livePrice) {
+    const alertMessage = `Alert 32 - P2P ad price for ${p2pAd.advertiser.nickName} is less than live price: ${p2pAdPrice} < ${livePrice}`;
+    sendAlert(alertMessage);
+  }
+}
+
+async function compareAndNotifyBuyandSell(p2pBuyAd, p2pSellAd) {
+  if (!p2pBuyAd || !p2pSellAd) return;
+
+  const p2pBuyAdPrice = p2pBuyAd.adv.price;
+  const p2pSellAdPrice = p2pSellAd.adv.price;
+  if (p2pBuyAdPrice < p2pSellAdPrice) {
+    const alertMessage = `Alert 3 - P2P ad price for ${p2pBuyAd.advertiser.nickName} is less than sell price: ${p2pBuyAdPrice} < ${p2pSellAdPrice}`;
+    sendAlert(alertMessage);
+  }
 }
 
 
-// Fetch live price of the asset
-function fetchLivePrice() {
-  const url = LIVE_PRICE_URL;
-  return api.get(url)
-    .then(response => response.data.ethereum.inr);
-}
 
-// Compare prices and send notification if P2P ad price is less than live price
-function compareAndNotify(p2pAdPrice, livePrice) {
-  if (p2pAdPrice < livePrice) {
-    console.log(`P2P ad price is less than live price: ${p2pAdPrice} < ${livePrice}`);
-    // send notification here (e.g. using a messaging service or email)
-    client.messages
-    .create({
-        body: `Alert 32 - P2P ad price is less than live price: ${p2pAdPrice} < ${livePrice}`,
-        from: 'whatsapp:+14155238886',
-        to: 'whatsapp:+919505753170'
-    })
-    .then(message => console.log(message.sid))
-    .done();
-    setTimeout(20000);
-  } else {
-    console.log(`P2P ad price is greater than or equal to live price: ${p2pAdPrice} >= ${livePrice}`);
+
+  async function run() {
+    try {
+      const [p2pAdPrice, livePrice] = await Promise.all([fetchP2PAdPrice('ETH','sell'), fetchLivePrice('ethereum')]);
+      compareAndNotify(p2pAdPrice, livePrice);
+  
+      const [p2pBuyAdPrice, p2pSellAdPrice] = await Promise.all([fetchP2PAdPrice('ETH','buy'), fetchP2PAdPrice('ETH','sell')]);
+      compareAndNotifyBuyandSell(p2pBuyAdPrice, p2pSellAdPrice);
+
+      const [btcp2pAdPrice, btclivePrice] = await Promise.all([fetchP2PAdPrice('BTC','buy'), fetchLivePrice('bitcoin')]);
+      compareAndNotify(btcp2pAdPrice, btclivePrice);
+
+      const [btcp2pBuyAdPrice, btcp2pSellAdPrice] = await Promise.all([fetchP2PAdPrice('BTC','buy'), fetchP2PAdPrice('BTC','sell')]);
+      compareAndNotifyBuyandSell(btcp2pBuyAdPrice, btcp2pSellAdPrice);
+
+      const [usdtp2pAdPrice, usdtlivePrice] = await Promise.all([fetchP2PAdPrice('USDT','buy'), fetchLivePrice('tether')]);
+      compareAndNotify(usdtp2pAdPrice, usdtlivePrice);
+
+      const [usdtp2pBuyAdPrice, usdtp2pSellAdPrice] = await Promise.all([fetchP2PAdPrice('USDT','buy'), fetchP2PAdPrice('USDT','sell')]);
+      compareAndNotifyBuyandSell(usdtp2pBuyAdPrice, usdtp2pSellAdPrice);
+
+
+      
+    } catch (error) {
+      console.log(error);
+    }
     
   }
-}
-function compareAndNotifyBuyandSell(p2pBuyAdPrice, p2pSellAdPrice) {
-    if (p2pBuyAdPrice < p2pSellAdPrice) {
-      console.log(`P2P ad buy price is less than sell price: ${p2pBuyAdPrice} < ${p2pSellAdPrice}`);
-      // send notification here (e.g. using a messaging service or email)
-      client.messages
-      .create({
-          body: `Alert 3 - P2P ad price is less than live price: ${p2pBuyAdPrice} < ${p2pSellAdPrice}`,
-          from: 'whatsapp:+14155238886',
-          to: 'whatsapp:+919505753170'
-      })
-      .then(message => console.log(message.sid))
-      .done();
-      setTimeout(20000);
-    } else {
-      console.log(`P2P ad buy price is greater than or equal to sell price: ${p2pBuyAdPrice} >= ${p2pSellAdPrice}`);
-      
-    }
-  }
-// Run the code every 5 seconds
-setInterval(() => {
-    // client.messages
-    // .create({
-    //     body: `I'm ready!`,
-    //     from: 'whatsapp:+14155238886',
-    //     to: 'whatsapp:+919505753170'
-    // });
-  Promise.all([fetchP2PAdPrice('buy'), fetchLivePrice()])
-    .then(prices => compareAndNotify(prices[0], prices[1]))
-    .catch(error => console.log(error));
-  Promise.all([fetchP2PAdPrice('buy'), fetchP2PAdPrice('sell')])
-    .then(prices => compareAndNotifyBuyandSell(prices[0], prices[1]))
-    .catch(error => console.log(error));
-}, 5000);  // 5 seconds interval
+  
+  setInterval(run, 5000);
+  
