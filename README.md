@@ -1,5 +1,6 @@
 # P2P-alert 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/a1f36bf3-9d9d-46e7-834b-06ebb326fad1/deploy-status)](https://app.netlify.com/sites/p2p-alert/deploys)
+
 P2P-alert is a command-line tool that sends alerts to a specified WhatsApp number using the Twilio API. It can be used to send alerts in a P2P network whenever a peer disconnects from the network.
 
 ## Requirements
@@ -32,7 +33,9 @@ YOUR_PHONE_NUMBER=your_whatsapp_phone_number
 
 4. Run the tool:
 
-```npm start```
+```
+npm start
+```
 
 ## Usage
 
